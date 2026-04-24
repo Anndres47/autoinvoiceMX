@@ -32,6 +32,10 @@ def restricted(func):
     return wrapped
 
 import sys
+import warnings
+from telegram.warnings import PTBUserWarning
+
+warnings.filterwarnings("ignore", category=PTBUserWarning)
 
 # Logging setup
 logging.basicConfig(

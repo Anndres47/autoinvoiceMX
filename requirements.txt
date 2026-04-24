@@ -1,0 +1,6 @@
+python-telegram-bot[job-queue]
+google-generativeai
+DrissionPage
+psycopg2-binary
+python-dotenv
+Pillow

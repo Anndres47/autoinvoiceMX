@@ -1,0 +1,11 @@
+services:
+  bot:
+    build: .
+    container_name: mx-autoinvoice-bot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./storage:/app/storage
+      - ./vendors:/app/vendors
+    # Link to external DB or use host network if DB is on host
+    # network_mode: "host"

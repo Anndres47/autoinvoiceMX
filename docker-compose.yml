@@ -1,6 +1,7 @@
 services:
   bot:
     build: .
+    image: mx-autoinvoice:latest
     container_name: mx-autoinvoice-bot
     restart: unless-stopped
     env_file: .env

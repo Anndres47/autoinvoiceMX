@@ -17,6 +17,20 @@ from vendors.base import BaseRecipe
 
 load_dotenv()
 
+# Security Whitelist
+ADMIN_IDS = [int(id.strip()) for id in os.getenv("ADMIN_IDS", "").split(",") if id.strip()]
+
+def restricted(func):
+    """Decorator to restrict access to the bot to admins only."""
+    async def wrapped(update, context, *args, **kwargs):
+        user_id = update.effective_user.id
+        if user_id not in ADMIN_IDS:
+            logging.warning(f"Unauthorized access attempt by {user_id}")
+            await update.message.reply_text("⛔ You are not authorized to use this bot.")
+            return
+        return await func(update, context, *args, **kwargs)
+    return wrapped
+
 # Logging setup
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -37,10 +51,12 @@ RECIPES = {
     "Walmart": WalmartRecipe
 }
 
+@restricted
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("MX-AutoInvoice Bot is active. Send me a photo of your ticket, use /history for records, or /status for portal health.")
     return LISTENING
 
+@restricted
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Checking portal health... Please wait.")
     
@@ -57,6 +73,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     await update.message.reply_text("\n".join(results), parse_mode='Markdown')
 
+@restricted
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     records = database.get_user_history(chat_id)
@@ -71,6 +88,7 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(msg)
 
+@restricted
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)

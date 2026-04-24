@@ -9,9 +9,7 @@ class WalmartRecipe(BaseRecipe):
     @property
     def selectors(self):
         return {
-            "tr_input": "#tr_number",
-            "tc_input": "#tc_number",
-            "continue_button": "#btn_continue"
+            "landing_btn": "text:Obtener factura"
         }
 
     @property

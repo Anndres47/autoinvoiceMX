@@ -1,4 +1,4 @@
-import google.generativeai as genai
+import google.genai as genai
 import os
 import json
 from PIL import Image
@@ -26,7 +26,7 @@ def get_vendor_knowledge():
             pass
     return "\n".join(hints)
 
-def parse_ticket(image_path):
+def parse_ticket(image_path, vendor=None):
     """
     Parses a ticket image using Gemini 1.5 Flash in JSON mode with vendor-specific knowledge.
     """
@@ -39,8 +39,10 @@ def parse_ticket(image_path):
     
     img = Image.open(image_path)
     
+    vendor_instruction = f"\n    The user has indicated this ticket is from: {vendor}.\n" if vendor else ""
+    
     prompt = f"""
-    You are an expert in Mexican retail tickets and invoicing (CFDI). 
+    You are an expert in Mexican retail tickets and invoicing (CFDI). {vendor_instruction}
     Extract data from this image into this JSON schema:
     {{
         "vendor": "string (e.g., OXXO, Walmart, Amazon)",

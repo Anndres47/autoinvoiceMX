@@ -31,16 +31,19 @@ def restricted(func):
         return await func(update, context, *args, **kwargs)
     return wrapped
 
+import sys
+
 # Logging setup
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    stream=sys.stdout
 )
 
 # States
-LISTENING, SELECTING_VENDOR, VALIDATING, AUTOMATING, CHALLENGE = range(5)
+SELECTING_VENDOR, WAITING_FOR_PHOTO, VALIDATING, AUTOMATING, CHALLENGE = range(5)
 
-SUPPORTED_VENDORS = ["OXXO", "Walmart", "Amazon MX", "Shell", "Other"]
+SUPPORTED_VENDORS = ["OXXO", "Walmart"]
 
 from vendors.oxxo import OxxoRecipe
 from vendors.walmart import WalmartRecipe
@@ -53,8 +56,21 @@ RECIPES = {
 
 @restricted
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("MX-AutoInvoice Bot is active. Send me a photo of your ticket, use /history for records, or /status for portal health.")
-    return LISTENING
+    keyboard = [[InlineKeyboardButton(v, callback_data=f"vendor_{v}")] for v in SUPPORTED_VENDORS]
+    await update.message.reply_text(
+        "MX-AutoInvoice Bot is active.\nPlease select the vendor for your ticket:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return SELECTING_VENDOR
+
+@restricted
+async def handle_photo_without_vendor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [[InlineKeyboardButton(v, callback_data=f"vendor_{v}")] for v in SUPPORTED_VENDORS]
+    await update.message.reply_text(
+        "Please select a vendor first before sending the photo:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return SELECTING_VENDOR
 
 @restricted
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -90,42 +106,28 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    selected_vendor = context.user_data.get('selected_vendor')
+    if not selected_vendor:
+        keyboard = [[InlineKeyboardButton(v, callback_data=f"vendor_{v}")] for v in SUPPORTED_VENDORS]
+        await update.message.reply_text("Please select a vendor first:", reply_markup=InlineKeyboardMarkup(keyboard))
+        return SELECTING_VENDOR
+
     photo = update.message.photo[-1]
     file = await context.bot.get_file(photo.file_id)
     photo_path = os.path.join("storage", f"{photo.file_id}.jpg")
     await file.download_to_drive(photo_path)
     
-    await update.message.reply_text("Scanning ticket with Gemini...")
+    await update.message.reply_text(f"Scanning ticket for {selected_vendor} with Gemini...")
     
-    ticket_data = parser.parse_ticket(photo_path)
+    ticket_data = parser.parse_ticket(photo_path, selected_vendor)
     if not ticket_data:
         await update.message.reply_text("Could not parse ticket. Please send a clearer photo.")
-        return LISTENING
+        return WAITING_FOR_PHOTO
+    
+    ticket_data['vendor'] = selected_vendor
     
     context.user_data['ticket_data'] = ticket_data
     context.user_data['photo_path'] = photo_path
-    
-    # Prompt for Vendor Selection
-    keyboard = [[InlineKeyboardButton(v, callback_data=f"vendor_{v}")] for v in SUPPORTED_VENDORS]
-    
-    # Highlight Gemini's guess
-    guess = ticket_data.get('vendor', 'Unknown')
-    msg = f"Gemini thinks this is from: *{guess}*\n\nPlease confirm or select the correct vendor:"
-    
-    await update.message.reply_text(
-        msg, 
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='Markdown'
-    )
-    return SELECTING_VENDOR
-
-async def vendor_selection_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    selected_vendor = query.data.replace("vendor_", "")
-    context.user_data['ticket_data']['vendor'] = selected_vendor
-    ticket_data = context.user_data['ticket_data']
     
     # Save to DB now that vendor is confirmed/selected
     ticket_id = database.add_ticket(
@@ -161,12 +163,22 @@ async def vendor_selection_handler(update: Update, context: ContextTypes.DEFAULT
             InlineKeyboardButton("CANCEL", callback_data='cancel'),
         ]
     ]
-    await query.edit_message_text(
+    await update.message.reply_text(
         msg, 
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
     return VALIDATING
+
+async def vendor_selection_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    selected_vendor = query.data.replace("vendor_", "")
+    context.user_data['selected_vendor'] = selected_vendor
+    
+    await query.edit_message_text(f"Vendor selected: *{selected_vendor}*\n\nPlease send me a photo of your ticket now.", parse_mode='Markdown')
+    return WAITING_FOR_PHOTO
 
 import asyncio
 
@@ -211,11 +223,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.edit_message_text(f"❌ Vendor {ticket_data['vendor']} not implemented yet.")
         
-        return LISTENING # Return to listening state while worker runs in BG
+        return SELECTING_VENDOR # Return to selecting vendor state while worker runs in BG
     elif query.data == 'cancel':
         database.update_ticket_status(ticket_id, 'CANCELLED')
         await query.edit_message_text("Operation cancelled.")
-        return LISTENING
+        return SELECTING_VENDOR
     else:
         await query.edit_message_text("Edit mode not implemented yet. Please resend photo or cancel.")
         return VALIDATING
@@ -235,20 +247,25 @@ if __name__ == '__main__':
             CommandHandler('start', start), 
             CommandHandler('history', history),
             CommandHandler('status', status),
-            MessageHandler(filters.PHOTO, handle_photo)
+            MessageHandler(filters.PHOTO, handle_photo_without_vendor)
         ],
         states={
-            LISTENING: [
+            SELECTING_VENDOR: [
+                CallbackQueryHandler(vendor_selection_handler, pattern="^vendor_"),
+                CommandHandler('history', history),
+                CommandHandler('status', status),
+                MessageHandler(filters.PHOTO, handle_photo_without_vendor)
+            ],
+            WAITING_FOR_PHOTO: [
                 MessageHandler(filters.PHOTO, handle_photo),
                 CommandHandler('history', history),
                 CommandHandler('status', status)
             ],
-            SELECTING_VENDOR: [CallbackQueryHandler(vendor_selection_handler, pattern="^vendor_")],
-            VALIDATING: [CallbackQueryHandler(button_handler)],
+            VALIDATING: [CallbackQueryHandler(button_handler, per_message=False)],
             AUTOMATING: [],
             CHALLENGE: []
         },
-        fallbacks=[CommandHandler('cancel', cancel)],
+        fallbacks=[CommandHandler('cancel', cancel), CommandHandler('start', start)],
     )
     
     app.add_handler(conv_handler)

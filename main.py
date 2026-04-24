@@ -261,7 +261,7 @@ if __name__ == '__main__':
                 CommandHandler('history', history),
                 CommandHandler('status', status)
             ],
-            VALIDATING: [CallbackQueryHandler(button_handler, per_message=False)],
+            VALIDATING: [CallbackQueryHandler(button_handler)],
             AUTOMATING: [],
             CHALLENGE: []
         },

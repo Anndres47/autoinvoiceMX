@@ -8,6 +8,12 @@ class BaseRecipe(abc.ABC):
         self.options = ChromiumOptions()
         if headless:
             self.options.headless()
+            self.options.set_argument('--headless=new')
+
+        # Crucial for Docker/Linux environments
+        self.options.set_argument('--no-sandbox')
+        self.options.set_argument('--disable-gpu')
+        self.options.set_argument('--disable-dev-shm-usage')
 
         # Resource Optimization: Block images and CSS
         self.options.set_pref('profile.managed_default_content_settings.images', 2)

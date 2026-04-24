@@ -150,17 +150,50 @@ async def vendor_selection_handler(update: Update, context: ContextTypes.DEFAULT
     )
     return VALIDATING
 
+import asyncio
+
+async def run_automation_worker(recipe_class, ticket_data, chat_id, ticket_id, context):
+    """Asynchronous worker to run the browser automation."""
+    try:
+        # Run the blocking DrissionPage code in a separate thread to keep bot responsive
+        def _run():
+            worker = recipe_class(headless=True)
+            try:
+                return worker.run(ticket_data)
+            finally:
+                worker.close()
+
+        result = await asyncio.to_thread(_run)
+        
+        status = 'COMPLETED' if "SUCCESS" in result else 'FAILED'
+        database.update_ticket_status(ticket_id, status)
+        
+        await context.bot.send_message(chat_id=chat_id, text=f"🤖 *Automation Result:*\n{result}", parse_mode='Markdown')
+        
+    except Exception as e:
+        logging.error(f"Worker Error: {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ *Critical Error:* {str(e)}", parse_mode='Markdown')
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     ticket_id = context.user_data.get('ticket_id')
+    ticket_data = context.user_data.get('ticket_data')
+    chat_id = update.effective_chat.id
     
     if query.data == 'yes':
         database.update_ticket_status(ticket_id, 'CONFIRMED')
-        await query.edit_message_text("Starting automation... (Email-First)")
-        # TODO: Trigger automation worker
-        return AUTOMATING
+        await query.edit_message_text("🚀 Starting automation worker... I will notify you when finished.")
+        
+        recipe_class = RECIPES.get(ticket_data['vendor'])
+        if recipe_class:
+            # Start the background task
+            asyncio.create_task(run_automation_worker(recipe_class, ticket_data, chat_id, ticket_id, context))
+        else:
+            await query.edit_message_text(f"❌ Vendor {ticket_data['vendor']} not implemented yet.")
+        
+        return LISTENING # Return to listening state while worker runs in BG
     elif query.data == 'cancel':
         database.update_ticket_status(ticket_id, 'CANCELLED')
         await query.edit_message_text("Operation cancelled.")

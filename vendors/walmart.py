@@ -27,6 +27,9 @@ class WalmartRecipe(BaseRecipe):
         self.page.get(self.url)
         
         try:
+            # Handle initial popups
+            self.handle_dialogues()
+
             # Walmart often has a landing page to choose 'Facturar'
             if self.page.ele('text:Facturar'):
                 self.page.ele('text:Facturar').click()
@@ -44,12 +47,43 @@ class WalmartRecipe(BaseRecipe):
             
             self.page.ele('#btn_continue').click()
             
-            # Email-First Strategy
-            # Walmart usually asks for email in the final step
+            # Step 2: Corroborate info and handle Selects
+            self.handle_dialogues()
+            import constants
+            
+            # Select Régimen Fiscal (e.g. 612)
+            if self.page.ele('#regimen_fiscal_select'):
+                self.select_sat_option('#regimen_fiscal_select', self.fiscal_data['regimen'], constants.REGIMEN_FISCAL)
+            
+            # Select Uso CFDI (e.g. G03)
+            if self.page.ele('#uso_cfdi_select'):
+                self.select_sat_option('#uso_cfdi_select', self.fiscal_data['uso_cfdi'], constants.USO_CFDI)
+                
+            # Select Forma de Pago (Prioritize .env, fallback to ticket OCR)
+            payment_code = self.fiscal_data['forma_pago'] or ticket_data.get('extra_data', {}).get('payment_method', '01')
+            if self.page.ele('#forma_pago_select'):
+                self.select_sat_option('#forma_pago_select', payment_code, constants.FORMA_PAGO)
+
+            # Click 'Obtener Factura' to reach the final email stage
+            if self.page.ele('text:Obtener Factura'):
+                self.page.ele('text:Obtener Factura').click()
+
+            # Email-First Strategy: Corroborate and Send
+            self.handle_dialogues()
+            email_field = self.page.ele('#email_input')
+            if email_field and email_field.value != self.default_email:
+                email_field.clear()
+                email_field.input(self.default_email)
+            
             success = self.trigger_email('#email_input', '#btn_send_invoice')
             
+            # Verify specific Walmart success message
             if success:
-                return "SUCCESS_EMAIL"
+                # Wait for the specific success text to appear on the page
+                if self.page.wait_for_ele('text:FACTURA ENVIADA', timeout=10):
+                    return "SUCCESS_EMAIL"
+                else:
+                    return "EMAIL_TRIGGERED_BUT_NO_CONFIRMATION"
             
             return "FAILED_EMAIL_TRIGGER"
             

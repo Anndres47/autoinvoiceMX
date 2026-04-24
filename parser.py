@@ -51,7 +51,8 @@ def parse_ticket(image_path):
         "extra_data": {
             "web_id": "string or null",
             "transaction_number": "string or null",
-            "store_id": "string or null"
+            "store_id": "string or null",
+            "payment_method": "string (e.g., Efectivo, Tarjeta, 28, 04) or null"
         }
 
     }}

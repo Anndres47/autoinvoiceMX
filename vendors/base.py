@@ -24,10 +24,47 @@ class BaseRecipe(abc.ABC):
             "uso_cfdi": os.getenv("USO_CFDI")
         }
 
+    @abc.abstractproperty
+    def url(self):
+        """Returns the main URL for the billing portal."""
+        pass
+
+    @abc.abstractproperty
+    def selectors(self):
+        """Returns a dictionary of core selectors to check for health."""
+        pass
+
+    def check_health(self):
+        """Verifies if the portal is reachable and core selectors are present."""
+        try:
+            self.page.get(self.url)
+            missing = []
+            for name, selector in self.selectors.items():
+                if not self.page.ele(selector, timeout=5):
+                    missing.append(name)
+            
+            if not missing:
+                return True, "Healthy"
+            return False, f"Broken selectors: {', '.join(missing)}"
+        except Exception as e:
+            return False, f"Portal unreachable: {str(e)}"
+
     @abc.abstractmethod
     def run(self, ticket_data):
         """Main entry point for the recipe."""
         pass
+
+    @abc.abstractproperty
+    def ocr_hints(self):
+        """Returns a string with hints for Gemini on how to find data for this vendor."""
+        pass
+
+    def save_debug_screenshot(self, name="error_debug"):
+        """Saves a screenshot to the storage folder for remote debugging."""
+        path = os.path.join("storage", f"{name}.png")
+        self.page.get_screenshot(path=path)
+        print(f"Debug screenshot saved to: {path}")
+        return path
 
     def trigger_email(self, email_field_selector, send_button_selector):
         """Generic method to fill email and send."""

@@ -28,9 +28,34 @@ LISTENING, SELECTING_VENDOR, VALIDATING, AUTOMATING, CHALLENGE = range(5)
 
 SUPPORTED_VENDORS = ["OXXO", "Walmart", "Amazon MX", "Shell", "Other"]
 
+from vendors.oxxo import OxxoRecipe
+from vendors.walmart import WalmartRecipe
+
+# Map the vendor name to the class
+RECIPES = {
+    "OXXO": OxxoRecipe,
+    "Walmart": WalmartRecipe
+}
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("MX-AutoInvoice Bot is active. Send me a photo of your ticket or use /history to see previous ones!")
+    await update.message.reply_text("MX-AutoInvoice Bot is active. Send me a photo of your ticket, use /history for records, or /status for portal health.")
     return LISTENING
+
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Checking portal health... Please wait.")
+    
+    results = []
+    for name, recipe_class in RECIPES.items():
+        try:
+            worker = recipe_class(headless=True)
+            is_healthy, msg = worker.check_health()
+            icon = "✅" if is_healthy else "❌"
+            results.append(f"{icon} *{name}*: {msg}")
+            worker.close()
+        except Exception as e:
+            results.append(f"❌ *{name}*: Unexpected error {str(e)}")
+            
+    await update.message.reply_text("\n".join(results), parse_mode='Markdown')
 
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -91,15 +116,23 @@ async def vendor_selection_handler(update: Update, context: ContextTypes.DEFAULT
         ticket_data.get('vendor'),
         ticket_data.get('folio'),
         ticket_data.get('total'),
-        ticket_data.get('date')
+        ticket_data.get('date'),
+        extra_data=ticket_data.get('extra_data')
     )
     context.user_data['ticket_id'] = ticket_id
+    
+    extra_msg = ""
+    if ticket_data.get('extra_data'):
+        for key, value in ticket_data['extra_data'].items():
+            if value:
+                extra_msg += f"{key.replace('_', ' ').title()}: {value}\n"
     
     msg = (
         f"Confirm details for *{selected_vendor}*:\n"
         f"Folio: {ticket_data.get('folio')}\n"
         f"Total: ${ticket_data.get('total')}\n"
-        f"Date: {ticket_data.get('date')}\n\n"
+        f"Date: {ticket_data.get('date')}\n"
+        f"{extra_msg}\n"
         f"Proceed with automation?"
     )
     
@@ -150,12 +183,14 @@ if __name__ == '__main__':
         entry_points=[
             CommandHandler('start', start), 
             CommandHandler('history', history),
+            CommandHandler('status', status),
             MessageHandler(filters.PHOTO, handle_photo)
         ],
         states={
             LISTENING: [
                 MessageHandler(filters.PHOTO, handle_photo),
-                CommandHandler('history', history)
+                CommandHandler('history', history),
+                CommandHandler('status', status)
             ],
             SELECTING_VENDOR: [CallbackQueryHandler(vendor_selection_handler, pattern="^vendor_")],
             VALIDATING: [CallbackQueryHandler(button_handler)],

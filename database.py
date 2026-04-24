@@ -1,5 +1,6 @@
 import psycopg2
 import os
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,6 +25,7 @@ def init_db():
             folio TEXT,
             total DECIMAL,
             date TEXT,
+            extra_data JSONB,
             status TEXT DEFAULT 'PENDING',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -32,14 +34,14 @@ def init_db():
     cur.close()
     conn.close()
 
-def add_ticket(chat_id, photo_path, vendor, folio, total, date):
+def add_ticket(chat_id, photo_path, vendor, folio, total, date, extra_data=None):
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute('''
-        INSERT INTO tickets (chat_id, photo_path, vendor, folio, total, date, status)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO tickets (chat_id, photo_path, vendor, folio, total, date, extra_data, status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id;
-    ''', (chat_id, photo_path, vendor, folio, total, date, 'PENDING'))
+    ''', (chat_id, photo_path, vendor, folio, total, date, json.dumps(extra_data) if extra_data else None, 'PENDING'))
     ticket_id = cur.fetchone()[0]
     conn.commit()
     cur.close()

@@ -1,4 +1,5 @@
 import google.genai as genai
+from google.genai import types
 import os
 import json
 from PIL import Image
@@ -6,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 from vendors.oxxo import OxxoRecipe
 from vendors.walmart import WalmartRecipe
@@ -30,11 +31,6 @@ def parse_ticket(image_path, vendor=None):
     """
     Parses a ticket image using Gemini 1.5 Flash in JSON mode with vendor-specific knowledge.
     """
-    model = genai.GenerativeModel(
-        'gemini-1.5-flash',
-        generation_config={"response_mime_type": "application/json"}
-    )
-    
     vendor_hints = get_vendor_knowledge()
     
     img = Image.open(image_path)
@@ -50,12 +46,12 @@ def parse_ticket(image_path, vendor=None):
         "total": number,
         "date": "string (YYYY-MM-DD)",
         "rfc": "string",
-        "extra_data": {
+        "extra_data": {{
             "web_id": "string or null",
             "transaction_number": "string or null",
             "store_id": "string or null",
             "payment_method": "string (e.g., Efectivo, Tarjeta, 28, 04) or null"
-        }
+        }}
 
     }}
 
@@ -70,7 +66,13 @@ def parse_ticket(image_path, vendor=None):
     """
     
     try:
-        response = model.generate_content([prompt, img])
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=[img, prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            )
+        )
         return json.loads(response.text)
     except Exception as e:
         print(f"Error in Gemini JSON parsing: {e}")

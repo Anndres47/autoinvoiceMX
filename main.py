@@ -168,12 +168,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"\nProceed with automation?"
         )
     elif selected_vendor == "Walmart":
-        tr = ticket_data.get('extra_data', {}).get('tr') or ticket_data.get('extra_data', {}).get('transaction_number', '')
-        tc = ticket_data.get('extra_data', {}).get('tc') or ticket_data.get('extra_data', {}).get('web_id', '')
+        tr = ticket_data.get('extra_data', {}).get('tr') or ticket_data.get('extra_data', {}).get('web_id', '')
+        tc = ticket_data.get('extra_data', {}).get('tc') or ticket_data.get('extra_data', {}).get('transaction_number', '')
         msg = (
             f"Confirm details for *{selected_vendor}*:\n"
-            f"TR (Ticket - 20 digits): {tr}\n"
-            f"TC (Transacción - 5 digits): {tc}\n"
+            f"TC (Ticket - 20 digits): {tc}\n"
+            f"TR (Transacción - 5 digits): {tr}\n"
             f"Total: ${ticket_data.get('total')}\n"
             f"Date: {ticket_data.get('date')}\n"
             f"\nProceed with automation?"

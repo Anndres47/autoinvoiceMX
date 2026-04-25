@@ -4,12 +4,12 @@ import os
 class WalmartRecipe(BaseRecipe):
     @property
     def url(self):
-        return 'https://facturacion.walmartmexico.com.mx/'
+        return 'https://facturacion.walmartmexico.com.mx/frmDatos.aspx'
 
     @property
     def selectors(self):
         return {
-            "landing_btn": "text:Obtener factura"
+            "tr_input": "#ctl00_ContentPlaceHolder1_txtTR"
         }
 
     ocr_hints = (
@@ -23,21 +23,13 @@ class WalmartRecipe(BaseRecipe):
         import logging
         self.page.get(self.url)
         logging.info(f"Navigating to Walmart portal: {self.url}")
-        current_action = "Loading initial Walmart portal page"
+        current_action = "Loading Walmart data form page"
         
         try:
-            # 1. Click 'Aceptar' button to close the dialogue
-            current_action = "Step 1: Handling initial dialogues (Aceptar)"
+            # Handle initial dialogues that might appear on page load
+            current_action = "Handling initial dialogues"
             logging.info(current_action)
             self.handle_dialogues()
-
-            # 2. Click the 'Obtener Factura' button to start the invoice process
-            current_action = "Step 2: Clicking 'Obtener factura' button"
-            logging.info(current_action)
-            # Use partial text match and href to handle that trailing space in the HTML
-            btn_obtener = self.page.ele('Obtener factura', timeout=5) or self.page.ele('@href=frmDatos.aspx', timeout=5)
-            if btn_obtener:
-                btn_obtener.click(by_js=True) # Use JS click in case it's a styled anchor
             
             # 3. Fill RFC, TC, TR, and zip code
             current_action = "Step 3a: Filling TR (Ticket) Number"
@@ -71,6 +63,10 @@ class WalmartRecipe(BaseRecipe):
             if btn_continue:
                 btn_continue.click(by_js=True)
             
+            # VERIFY Step 4 worked by waiting for a Step 5 element
+            if not self.page.ele('#ctl00_ContentPlaceHolder1_txtRazon', timeout=10):
+                raise Exception("Failed to reach Step 5: Razon Social field not found. Likely validation error on Step 3.")
+            
             # 5. Handle Selects ('Regimen' and 'CFDI') and 'Razon Social'
             current_action = "Step 5a: Handling dialogues after Continuar"
             logging.info(current_action)
@@ -78,10 +74,18 @@ class WalmartRecipe(BaseRecipe):
             import constants
             
             # Fill Razon Social if it appears
-            current_action = "Step 5b: Filling Razon Social"
+            current_action = "Step 5b: Corroborating Razon Social"
             logging.info(current_action)
-            if self.page.ele('#ctl00_ContentPlaceHolder1_txtRazon', timeout=2):
-                self.page.ele('#ctl00_ContentPlaceHolder1_txtRazon').input(self.fiscal_data['razon_social'])
+            razon_field = self.page.ele('#ctl00_ContentPlaceHolder1_txtRazon', timeout=5)
+            if razon_field:
+                env_razon = self.fiscal_data['razon_social'].strip().upper()
+                current_val = (razon_field.value or "").strip().upper()
+                if env_razon != current_val:
+                    logging.info(f"Overwriting pre-filled Razon Social: '{current_val}' -> '{env_razon}'")
+                    razon_field.clear()
+                    razon_field.input(env_razon)
+                else:
+                    logging.info("Razon Social is already correctly pre-filled.")
 
             # Select Régimen Fiscal (e.g. 612)
             current_action = "Step 5c: Selecting Regimen Fiscal"
@@ -106,6 +110,10 @@ class WalmartRecipe(BaseRecipe):
             current_action = "Step 6.5: Handling confirm data dialogue (Aceptar)"
             logging.info(current_action)
             self.handle_dialogues()
+            
+            # VERIFY Step 6 worked by waiting for Step 7 element
+            if not self.page.ele('#ctl00_ContentPlaceHolder1_ddlPaymentType', timeout=10):
+                raise Exception("Failed to reach Step 7: Payment Type dropdown not found after confirmation.")
 
             # 7. Select Forma de Pago (Payment Method)
             current_action = "Step 7: Selecting Forma de Pago"
@@ -125,6 +133,10 @@ class WalmartRecipe(BaseRecipe):
             current_action = "Step 9a: Handling dialogues before email"
             logging.info(current_action)
             self.handle_dialogues()
+            
+            # VERIFY Step 8 worked by checking for email box
+            if not self.page.ele('#ctl00_ContentPlaceHolder1_txtEmail', timeout=10):
+                 logging.warning("Step 9 email field not found immediately, trying to proceed anyway...")
             
             current_action = "Step 9b: Toggling 'Enviar a correo electronico'"
             logging.info(current_action)
@@ -151,7 +163,7 @@ class WalmartRecipe(BaseRecipe):
             current_action = "Step 11: Waiting for 'FACTURA ENVIADA' success message"
             logging.info(current_action)
             self.handle_dialogues()
-            if self.page.wait_for_ele('text:FACTURA ENVIADA', timeout=10):
+            if self.page.ele('text:FACTURA ENVIADA', timeout=15):
                 logging.info("SUCCESS: Walmart invoice sent.")
                 return "SUCCESS_EMAIL"
             else:

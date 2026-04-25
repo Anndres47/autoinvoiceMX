@@ -157,20 +157,40 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     context.user_data['ticket_id'] = ticket_id
     
-    extra_msg = ""
-    if ticket_data.get('extra_data'):
-        for key, value in ticket_data['extra_data'].items():
-            if value:
-                extra_msg += f"{key.replace('_', ' ').title()}: {value}\n"
-    
-    msg = (
-        f"Confirm details for *{selected_vendor}*:\n"
-        f"Folio: {ticket_data.get('folio')}\n"
-        f"Total: ${ticket_data.get('total')}\n"
-        f"Date: {ticket_data.get('date')}\n"
-        f"{extra_msg}\n"
-        f"Proceed with automation?"
-    )
+    if selected_vendor == "OXXO":
+        msg = (
+            f"Confirm details for *{selected_vendor}*:\n"
+            f"Folio: {ticket_data.get('folio')}\n"
+            f"Total: ${ticket_data.get('total')}\n"
+            f"Date: {ticket_data.get('date')}\n"
+            f"\nProceed with automation?"
+        )
+    elif selected_vendor == "Walmart":
+        tr = ticket_data.get('extra_data', {}).get('transaction_number', '')
+        tc = ticket_data.get('extra_data', {}).get('web_id', '')
+        msg = (
+            f"Confirm details for *{selected_vendor}*:\n"
+            f"TR (Ticket): {tr}\n"
+            f"TC (Transacción): {tc}\n"
+            f"Total: ${ticket_data.get('total')}\n"
+            f"Date: {ticket_data.get('date')}\n"
+            f"\nProceed with automation?"
+        )
+    else:
+        extra_msg = ""
+        if ticket_data.get('extra_data'):
+            for key, value in ticket_data['extra_data'].items():
+                if value:
+                    extra_msg += f"{key.replace('_', ' ').title()}: {value}\n"
+        
+        msg = (
+            f"Confirm details for *{selected_vendor}*:\n"
+            f"Folio: {ticket_data.get('folio')}\n"
+            f"Total: ${ticket_data.get('total')}\n"
+            f"Date: {ticket_data.get('date')}\n"
+            f"{extra_msg}\n"
+            f"Proceed with automation?"
+        )
     
     keyboard = [
         [
@@ -216,11 +236,11 @@ async def run_automation_worker(recipe_class, ticket_data, chat_id, ticket_id, c
         status = 'COMPLETED' if "SUCCESS" in result else 'FAILED'
         database.update_ticket_status(ticket_id, status)
         
-        await context.bot.send_message(chat_id=chat_id, text=f"🤖 *Automation Result:*\n{result}", parse_mode='Markdown')
+        await context.bot.send_message(chat_id=chat_id, text=f"🤖 Automation Result:\n{result}")
         
     except Exception as e:
         logging.error(f"Worker Error: {e}")
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ *Critical Error:* {str(e)}", parse_mode='Markdown')
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ Critical Error: {str(e)}")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

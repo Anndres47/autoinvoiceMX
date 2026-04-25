@@ -236,7 +236,19 @@ async def run_automation_worker(recipe_class, ticket_data, chat_id, ticket_id, c
         status = 'COMPLETED' if "SUCCESS" in result else 'FAILED'
         database.update_ticket_status(ticket_id, status)
         
-        await context.bot.send_message(chat_id=chat_id, text=f"🤖 Automation Result:\n{result}")
+        if status == 'FAILED':
+            logging.error(f"Automation Worker Failed:\n{result}")
+            
+            # Extract just the screenshot path for the user if it exists
+            screenshot_msg = ""
+            if "(Screenshot saved: " in result:
+                screenshot_path = result.split("(Screenshot saved: ")[1].replace(")", "")
+                screenshot_msg = f"\n\nScreenshot saved: {screenshot_path}"
+                
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ Failed to invoice. Please check the server logs for details.{screenshot_msg}")
+        else:
+            logging.info(f"Automation Worker Success:\n{result}")
+            await context.bot.send_message(chat_id=chat_id, text=f"✅ Automation Result:\n{result}")
         
     except Exception as e:
         logging.error(f"Worker Error: {e}")
@@ -291,11 +303,43 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     if isinstance(update, Update) and update.effective_message:
         await update.effective_message.reply_text("❌ An unexpected error occurred. Please try again later.")
 
+import time
+import datetime
+
+async def cleanup_debug_screenshots(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Deletes screenshots older than 7 days in storage/debug."""
+    debug_dir = os.path.join("storage", "debug")
+    if not os.path.exists(debug_dir):
+        return
+    
+    now = time.time()
+    seven_days_ago = now - (7 * 24 * 60 * 60)
+    
+    count = 0
+    for filename in os.listdir(debug_dir):
+        filepath = os.path.join(debug_dir, filename)
+        if os.path.isfile(filepath):
+            file_mtime = os.path.getmtime(filepath)
+            if file_mtime < seven_days_ago:
+                try:
+                    os.remove(filepath)
+                    count += 1
+                except Exception as e:
+                    logging.error(f"Failed to delete old debug screenshot {filepath}: {e}")
+                    
+    if count > 0:
+        logging.info(f"Cleaned up {count} old debug screenshot(s) from storage/debug.")
+
 if __name__ == '__main__':
     # Initialize DB
     database.init_db()
     
     app = ApplicationBuilder().token(os.getenv("TELEGRAM_TOKEN")).build()
+    
+    # Schedule the cleanup job to run daily
+    if app.job_queue:
+        app.job_queue.run_daily(cleanup_debug_screenshots, time=datetime.time(hour=3, minute=0, tzinfo=datetime.timezone.utc))
+
     
     conv_handler = ConversationHandler(
         entry_points=[

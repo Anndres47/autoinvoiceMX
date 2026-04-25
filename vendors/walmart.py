@@ -23,65 +23,72 @@ class WalmartRecipe(BaseRecipe):
         self.page.get(self.url)
         
         try:
-            # Handle initial popups
+            # 1. Click 'Aceptar' button to close the dialogue
             self.handle_dialogues()
 
-            # Walmart often has a landing page to choose 'Facturar'
-            if self.page.ele('text:Facturar'):
-                self.page.ele('text:Facturar').click()
+            # 2. Click the 'Obtener Factura' button to start the invoice process
+            btn_obtener = self.page.ele('text:Obtener factura', timeout=5) or self.page.ele('text:Obtener Factura', timeout=5)
+            if btn_obtener:
+                btn_obtener.click()
             
-            # Fill Ticket Details
-            self.page.ele('#tr_number').input(ticket_data.get('extra_data', {}).get('transaction_number', ''))
-            self.page.ele('#tc_number').input(ticket_data.get('extra_data', {}).get('web_id', ''))
-            self.page.ele('#total').input(ticket_data['total'])
-            self.page.ele('#rfc').input(self.fiscal_data['rfc'])
+            # 3. Fill RFC, TC, TR, and zip code
+            if self.page.ele('#tr_number', timeout=2):
+                self.page.ele('#tr_number').input(ticket_data.get('extra_data', {}).get('transaction_number', ''))
+            if self.page.ele('#tc_number', timeout=2):
+                self.page.ele('#tc_number').input(ticket_data.get('extra_data', {}).get('web_id', ''))
+            if self.page.ele('#rfc', timeout=2):
+                self.page.ele('#rfc').input(self.fiscal_data['rfc'])
             
             # Zip Code (CP) - Always use the user's personal ZIP from .env for CFDI 4.0
             personal_zip = self.fiscal_data.get('zip', '')
-            if self.page.ele('#cp_input'):
+            if self.page.ele('#cp_input', timeout=2):
                 self.page.ele('#cp_input').input(personal_zip)
             
-            self.page.ele('#btn_continue').click()
+            # 4. Click 'Continuar' button
+            btn_continue = self.page.ele('text:Continuar', timeout=5) or self.page.ele('#btn_continue', timeout=5)
+            if btn_continue:
+                btn_continue.click()
             
-            # Step 2: Corroborate info and handle Selects
+            # 5. Handle Selects ('Regimen' and 'CFDI')
             self.handle_dialogues()
             import constants
             
             # Select Régimen Fiscal (e.g. 612)
-            if self.page.ele('#regimen_fiscal_select'):
+            if self.page.ele('#regimen_fiscal_select', timeout=2):
                 self.select_sat_option('#regimen_fiscal_select', self.fiscal_data['regimen'], constants.REGIMEN_FISCAL)
             
             # Select Uso CFDI (e.g. G03)
-            if self.page.ele('#uso_cfdi_select'):
+            if self.page.ele('#uso_cfdi_select', timeout=2):
                 self.select_sat_option('#uso_cfdi_select', self.fiscal_data['uso_cfdi'], constants.USO_CFDI)
                 
-            # Select Forma de Pago (Prioritize .env, fallback to ticket OCR)
+            # Select Forma de Pago (Prioritize .env, fallback to ticket OCR) if it exists
             payment_code = self.fiscal_data['forma_pago'] or ticket_data.get('extra_data', {}).get('payment_method', '01')
-            if self.page.ele('#forma_pago_select'):
+            if self.page.ele('#forma_pago_select', timeout=2):
                 self.select_sat_option('#forma_pago_select', payment_code, constants.FORMA_PAGO)
 
-            # Click 'Obtener Factura' to reach the final email stage
-            if self.page.ele('text:Obtener Factura'):
-                self.page.ele('text:Obtener Factura').click()
+            # 6. Click 'Continuar' button again
+            btn_continue_2 = self.page.ele('text:Continuar', timeout=5)
+            if btn_continue_2:
+                btn_continue_2.click()
 
-            # Email-First Strategy: Corroborate and Send
+            # 7. Asks if you want it by email and fill the email box
             self.handle_dialogues()
-            email_field = self.page.ele('#email_input')
-            if email_field and email_field.value != self.default_email:
-                email_field.clear()
-                email_field.input(self.default_email)
+            email_field = self.page.ele('#email_input', timeout=2) or self.page.ele('@type=email', timeout=2)
+            if email_field:
+                if email_field.value != self.default_email:
+                    email_field.clear()
+                    email_field.input(self.default_email)
             
-            success = self.trigger_email('#email_input', '#btn_send_invoice')
+            # 8. Click 'Continuar' or 'Facturar' button
+            btn_send = self.page.ele('text:Facturar', timeout=5) or self.page.ele('text:Continuar', timeout=5) or self.page.ele('#btn_send_invoice', timeout=5)
+            if btn_send:
+                btn_send.click()
             
-            # Verify specific Walmart success message
-            if success:
-                # Wait for the specific success text to appear on the page
-                if self.page.wait_for_ele('text:FACTURA ENVIADA', timeout=10):
-                    return "SUCCESS_EMAIL"
-                else:
-                    return "EMAIL_TRIGGERED_BUT_NO_CONFIRMATION"
-            
-            return "FAILED_EMAIL_TRIGGER"
+            # 9. Verify specific Walmart success message
+            if self.page.wait_for_ele('text:FACTURA ENVIADA', timeout=10):
+                return "SUCCESS_EMAIL"
+            else:
+                return "EMAIL_TRIGGERED_BUT_NO_CONFIRMATION"
             
         except Exception as e:
             screenshot_path = self.save_debug_screenshot(f"walmart_error_{ticket_data.get('folio', 'unknown')}")

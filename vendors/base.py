@@ -91,8 +91,10 @@ class BaseRecipe(abc.ABC):
         pass
 
     def save_debug_screenshot(self, name="error_debug"):
-        """Saves a screenshot to the storage folder for remote debugging."""
-        path = os.path.join("storage", f"{name}.png")
+        """Saves a screenshot to the storage/debug folder for remote debugging."""
+        debug_dir = os.path.join("storage", "debug")
+        os.makedirs(debug_dir, exist_ok=True)
+        path = os.path.join(debug_dir, f"{name}.png")
         self.page.get_screenshot(path=path)
         print(f"Debug screenshot saved to: {path}")
         return path

@@ -240,6 +240,21 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Operation cancelled.")
     return ConversationHandler.END
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and send a telegram message to notify the developer."""
+    # Log the error before we do anything else, so we can see it even if something breaks here.
+    logging.error("Exception while handling an update:", exc_info=context.error)
+
+    # Handle common network errors silently
+    from telegram.error import NetworkError, TimedOut
+    if isinstance(context.error, (NetworkError, TimedOut)):
+        logging.warning(f"Telegram Network Error: {context.error}. Bot will retry automatically.")
+        return
+
+    # For other errors, notify the user if possible
+    if isinstance(update, Update) and update.effective_message:
+        await update.effective_message.reply_text("❌ An unexpected error occurred. Please try again later.")
+
 if __name__ == '__main__':
     # Initialize DB
     database.init_db()
@@ -273,5 +288,6 @@ if __name__ == '__main__':
     )
     
     app.add_handler(conv_handler)
+    app.add_error_handler(error_handler)
     print("Bot is running...")
     app.run_polling()

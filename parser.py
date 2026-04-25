@@ -7,7 +7,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+client = genai.Client(
+    api_key=os.getenv("GEMINI_API_KEY"),
+    http_options={'api_version': 'v1'}
+)
 
 from vendors.oxxo import OxxoRecipe
 from vendors.walmart import WalmartRecipe
@@ -66,9 +69,13 @@ def parse_ticket(image_path, vendor=None):
     """
     
     try:
+        # Explicitly use the latest stable flash model
         response = client.models.generate_content(
             model='gemini-1.5-flash',
-            contents=[img, prompt],
+            contents=[
+                types.Part.from_text(text=prompt),
+                img
+            ],
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
             )

@@ -69,17 +69,21 @@ def parse_ticket(image_path, vendor=None):
     
     try:
         response = client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='gemini-2.5-flash',
             contents=[
                 types.Part.from_text(text=prompt),
                 img
-            ],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-            )
+            ]
         )
         
-        data = json.loads(response.text)
+        # Clean up response if it contains markdown formatting
+        text = response.text.strip()
+        if text.startswith("```json"):
+            text = text[7:-3].strip()
+        elif text.startswith("```"):
+            text = text[3:-3].strip()
+            
+        data = json.loads(text)
         logging.info(f"✅ Gemini successfully parsed data: {data}")
         return data
     except Exception as e:

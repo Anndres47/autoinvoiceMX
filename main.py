@@ -63,6 +63,7 @@ RECIPES = {
 
 @restricted
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logging.info(f"User {update.effective_user.id} requested /start")
     keyboard = [[InlineKeyboardButton(v, callback_data=f"vendor_{v}")] for v in SUPPORTED_VENDORS]
     await update.message.reply_text(
         "MX-AutoInvoice Bot is active.\nPlease select the vendor for your ticket:",
@@ -72,6 +73,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @restricted
 async def handle_photo_without_vendor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logging.info(f"User {update.effective_user.id} sent a photo without selecting a vendor")
     keyboard = [[InlineKeyboardButton(v, callback_data=f"vendor_{v}")] for v in SUPPORTED_VENDORS]
     await update.message.reply_text(
         "Please select a vendor first before sending the photo:",
@@ -81,6 +83,7 @@ async def handle_photo_without_vendor(update: Update, context: ContextTypes.DEFA
 
 @restricted
 async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logging.info(f"User {update.effective_user.id} requested /status")
     await update.message.reply_text("Checking portal health... Please wait.")
     
     results = []
@@ -99,6 +102,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @restricted
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+    logging.info(f"User {update.effective_user.id} requested /history")
     records = database.get_user_history(chat_id)
     
     if not records:

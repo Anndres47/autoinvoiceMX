@@ -36,12 +36,14 @@ class WalmartRecipe(BaseRecipe):
             
             # 3. Fill RFC, TC, TR, and zip code
             current_action = "Step 3a: Filling TR (Ticket) Number"
-            if self.page.ele('#ctl00_ContentPlaceHolder1_txtTC', timeout=2):
-                self.page.ele('#ctl00_ContentPlaceHolder1_txtTC').input(ticket_data.get('extra_data', {}).get('transaction_number', ''))
+            tr_val = ticket_data.get('extra_data', {}).get('tr') or ticket_data.get('extra_data', {}).get('transaction_number', '')
+            if self.page.ele('#ctl00_ContentPlaceHolder1_txtTR', timeout=2):
+                self.page.ele('#ctl00_ContentPlaceHolder1_txtTR').input(tr_val)
             
             current_action = "Step 3b: Filling TC (Transaction) Number"
-            if self.page.ele('#ctl00_ContentPlaceHolder1_txtTR', timeout=2):
-                self.page.ele('#ctl00_ContentPlaceHolder1_txtTR').input(ticket_data.get('extra_data', {}).get('web_id', ''))
+            tc_val = ticket_data.get('extra_data', {}).get('tc') or ticket_data.get('extra_data', {}).get('web_id', '')
+            if self.page.ele('#ctl00_ContentPlaceHolder1_txtTC', timeout=2):
+                self.page.ele('#ctl00_ContentPlaceHolder1_txtTC').input(tc_val)
             
             current_action = "Step 3c: Filling RFC"
             if self.page.ele('#ctl00_ContentPlaceHolder1_txtMemRFC', timeout=2):

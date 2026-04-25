@@ -166,8 +166,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"\nProceed with automation?"
         )
     elif selected_vendor == "Walmart":
-        tr = ticket_data.get('extra_data', {}).get('transaction_number', '')
-        tc = ticket_data.get('extra_data', {}).get('web_id', '')
+        tr = ticket_data.get('extra_data', {}).get('tr') or ticket_data.get('extra_data', {}).get('web_id', '')
+        tc = ticket_data.get('extra_data', {}).get('tc') or ticket_data.get('extra_data', {}).get('transaction_number', '')
         msg = (
             f"Confirm details for *{selected_vendor}*:\n"
             f"TR (Ticket): {tr}\n"

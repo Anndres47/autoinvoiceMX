@@ -48,21 +48,23 @@ def parse_ticket(image_path, vendor=None):
         "total": number,
         "date": "string (YYYY-MM-DD)",
         "rfc": "string",
-        "extra_data": {{
+        "extra_data": {
             "web_id": "string or null",
             "transaction_number": "string or null",
+            "tr": "string or null",
+            "tc": "string or null",
             "store_id": "string or null",
             "payment_method": "string (e.g., Efectivo, Tarjeta, 28, 04) or null"
+        }
         }}
-    }}
 
-    VENDOR-SPECIFIC KNOWLEDGE BASE:
-    {vendor_hints}
+        VENDOR-SPECIFIC KNOWLEDGE BASE:
+        {vendor_hints}
 
-    GENERAL INSTRUCTIONS:
-    - Look for 'Folio', 'Web ID', 'No. Transacción', 'Ticket ID'.
-    - For Walmart: TR maps to 'transaction_number', TC maps to 'web_id'.
-    - If you see multiple dates, the 'date' should be the purchase date.
+        GENERAL INSTRUCTIONS:
+        - Look for 'Folio', 'Web ID', 'No. Transacción', 'Ticket ID'.
+        - For Walmart: put TR into 'tr' and TC into 'tc'.
+        - If you see multiple dates, the 'date' should be the purchase date.
     - Total must be a number only.
     - If information is missing, use null.
     """

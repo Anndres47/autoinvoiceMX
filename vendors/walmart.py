@@ -15,7 +15,7 @@ class WalmartRecipe(BaseRecipe):
     ocr_hints = (
         "For Walmart/Sam's Club/Bodega Aurrera: Look for a long 'Ticket' number (usually labeled as TR) "
         "and a 'Transaction' number (labeled as TC). "
-        "The TR is often 20 digits, and the TC is 3-4 digits. "
+        "The TR is often 20 digits, and the TC is 5 digits. "
         "Also look for 'Código Postal' or 'CP' (Zip Code)."
     )
 

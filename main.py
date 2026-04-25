@@ -44,6 +44,9 @@ logging.basicConfig(
     stream=sys.stdout
 )
 
+# Silence httpx logger to avoid log saturation
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 # States
 SELECTING_VENDOR, WAITING_FOR_PHOTO, VALIDATING, AUTOMATING, CHALLENGE = range(5)
 
@@ -123,9 +126,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"Scanning ticket for {selected_vendor} with Gemini...")
     
-    ticket_data = parser.parse_ticket(photo_path, selected_vendor)
-    if not ticket_data:
-        await update.message.reply_text("Could not parse ticket. Please send a clearer photo.")
+    try:
+        ticket_data = parser.parse_ticket(photo_path, selected_vendor)
+        if not ticket_data:
+            await update.message.reply_text("😕 Gemini scanned the photo but couldn't find invoice data. Please try a clearer or closer photo.")
+            return WAITING_FOR_PHOTO
+    except Exception as e:
+        logging.error(f"Gemini API Error: {e}")
+        await update.message.reply_text("⚠️ Gemini API is currently unavailable or returned an error. Please try again in a few minutes.")
         return WAITING_FOR_PHOTO
     
     ticket_data['vendor'] = selected_vendor

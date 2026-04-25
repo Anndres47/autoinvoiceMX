@@ -60,8 +60,7 @@ class BaseRecipe(abc.ABC):
             print(f"Failed to select SAT option {code}: {e}")
             return False
 
-    @abc.abstractmethod
-
+    @abc.abstractproperty
     def url(self):
         """Returns the main URL for the billing portal."""
         pass
@@ -89,11 +88,6 @@ class BaseRecipe(abc.ABC):
     @abc.abstractmethod
     def run(self, ticket_data):
         """Main entry point for the recipe."""
-        pass
-
-    @abc.abstractproperty
-    def ocr_hints(self):
-        """Returns a string with hints for Gemini on how to find data for this vendor."""
         pass
 
     def save_debug_screenshot(self, name="error_debug"):

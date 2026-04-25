@@ -13,13 +13,11 @@ class OxxoRecipe(BaseRecipe):
             "next_button": "@name=form:continuar"
         }
 
-    @property
-    def ocr_hints(self):
-        return (
-            "For OXXO: Look for 'Folio-Venta' (usually 10MAY50...). "
-            "The 'Total' is the grand total with tax. "
-            "The 'Date' is near the top."
-        )
+    ocr_hints = (
+        "For OXXO: Look for 'Folio-Venta' (usually 10MAY50...). "
+        "The 'Total' is the grand total with tax. "
+        "The 'Date' is near the top."
+    )
 
     def run(self, ticket_data):
         # 1. Go to portal

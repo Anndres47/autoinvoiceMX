@@ -189,6 +189,8 @@ async def vendor_selection_handler(update: Update, context: ContextTypes.DEFAULT
     selected_vendor = query.data.replace("vendor_", "")
     context.user_data['selected_vendor'] = selected_vendor
     
+    logging.info(f"User {update.effective_user.id} selected vendor: {selected_vendor}")
+    
     await query.edit_message_text(f"Vendor selected: *{selected_vendor}*\n\nPlease send me a photo of your ticket now.", parse_mode='Markdown')
     return WAITING_FOR_PHOTO
 
@@ -225,6 +227,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     
     if query.data == 'yes':
+        logging.info(f"User {chat_id} confirmed automation for ticket {ticket_id}")
         database.update_ticket_status(ticket_id, 'CONFIRMED')
         await query.edit_message_text("🚀 Starting automation worker... I will notify you when finished.")
         
@@ -237,6 +240,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         return SELECTING_VENDOR # Return to selecting vendor state while worker runs in BG
     elif query.data == 'cancel':
+        logging.info(f"User {chat_id} cancelled automation for ticket {ticket_id}")
         database.update_ticket_status(ticket_id, 'CANCELLED')
         await query.edit_message_text("Operation cancelled.")
         return SELECTING_VENDOR

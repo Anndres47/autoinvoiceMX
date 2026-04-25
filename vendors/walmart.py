@@ -12,14 +12,12 @@ class WalmartRecipe(BaseRecipe):
             "landing_btn": "text:Obtener factura"
         }
 
-    @property
-    def ocr_hints(self):
-        return (
-            "For Walmart/Sam's Club/Bodega Aurrera: Look for a long 'Ticket' number (usually labeled as TR) "
-            "and a 'Transaction' number (labeled as TC). "
-            "The TR is often 20 digits, and the TC is 3-4 digits. "
-            "Also look for 'Código Postal' or 'CP' (Zip Code)."
-        )
+    ocr_hints = (
+        "For Walmart/Sam's Club/Bodega Aurrera: Look for a long 'Ticket' number (usually labeled as TR) "
+        "and a 'Transaction' number (labeled as TC). "
+        "The TR is often 20 digits, and the TC is 3-4 digits. "
+        "Also look for 'Código Postal' or 'CP' (Zip Code)."
+    )
 
     def run(self, ticket_data):
         self.page.get(self.url)

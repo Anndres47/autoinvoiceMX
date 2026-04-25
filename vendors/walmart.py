@@ -34,9 +34,10 @@ class WalmartRecipe(BaseRecipe):
             # 2. Click the 'Obtener Factura' button to start the invoice process
             current_action = "Step 2: Clicking 'Obtener factura' button"
             logging.info(current_action)
-            btn_obtener = self.page.ele('text:Obtener factura', timeout=5) or self.page.ele('text:Obtener Factura', timeout=5)
+            # Use partial text match and href to handle that trailing space in the HTML
+            btn_obtener = self.page.ele('Obtener factura', timeout=5) or self.page.ele('@href=frmDatos.aspx', timeout=5)
             if btn_obtener:
-                btn_obtener.click()
+                btn_obtener.click(by_js=True) # Use JS click in case it's a styled anchor
             
             # 3. Fill RFC, TC, TR, and zip code
             current_action = "Step 3a: Filling TR (Ticket) Number"
@@ -68,7 +69,7 @@ class WalmartRecipe(BaseRecipe):
             logging.info(current_action)
             btn_continue = self.page.ele('#ctl00_ContentPlaceHolder1_btnAceptar', timeout=5) or self.page.ele('text:Continuar', timeout=5)
             if btn_continue:
-                btn_continue.click()
+                btn_continue.click(by_js=True)
             
             # 5. Handle Selects ('Regimen' and 'CFDI') and 'Razon Social'
             current_action = "Step 5a: Handling dialogues after Continuar"
@@ -99,7 +100,7 @@ class WalmartRecipe(BaseRecipe):
             logging.info(current_action)
             btn_aceptar = self.page.ele('#ctl00_ContentPlaceHolder1_btnAceptar', timeout=5) or self.page.ele('text:Aceptar', timeout=5)
             if btn_aceptar:
-                btn_aceptar.click()
+                btn_aceptar.click(by_js=True)
 
             # 6.5 Handle dialogue to confirm if data is correct ('Aceptar' again)
             current_action = "Step 6.5: Handling confirm data dialogue (Aceptar)"
@@ -118,7 +119,7 @@ class WalmartRecipe(BaseRecipe):
             logging.info(current_action)
             btn_continue_3 = self.page.ele('#ctl00_ContentPlaceHolder1_btnAceptar', timeout=5) or self.page.ele('text:Continuar', timeout=5)
             if btn_continue_3:
-                btn_continue_3.click()
+                btn_continue_3.click(by_js=True)
 
             # 9. Email confirmation toggle and email box
             current_action = "Step 9a: Handling dialogues before email"
@@ -129,7 +130,7 @@ class WalmartRecipe(BaseRecipe):
             logging.info(current_action)
             email_toggle = self.page.ele('@for=ctl00_ContentPlaceHolder1_rdCorreo', timeout=2) or self.page.ele('#ctl00_ContentPlaceHolder1_rdCorreo', timeout=2)
             if email_toggle:
-                email_toggle.click()
+                email_toggle.click(by_js=True)
             
             current_action = "Step 9c: Verifying/Filling Email Address"
             logging.info(current_action)
@@ -144,7 +145,7 @@ class WalmartRecipe(BaseRecipe):
             logging.info(current_action)
             btn_facturar = self.page.ele('#ctl00_ContentPlaceHolder1_btnFacturar', timeout=5) or self.page.ele('text:Facturar', timeout=5)
             if btn_facturar:
-                btn_facturar.click()
+                btn_facturar.click(by_js=True)
             
             # 11. Verify specific Walmart success message
             current_action = "Step 11: Waiting for 'FACTURA ENVIADA' success message"

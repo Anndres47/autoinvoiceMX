@@ -170,8 +170,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tc = ticket_data.get('extra_data', {}).get('tc') or ticket_data.get('extra_data', {}).get('transaction_number', '')
         msg = (
             f"Confirm details for *{selected_vendor}*:\n"
-            f"TR (Ticket): {tr}\n"
-            f"TC (Transacción): {tc}\n"
+            f"TR (Transacción): {tr}\n"
+            f"TC (Ticket): {tc}\n"
             f"Total: ${ticket_data.get('total')}\n"
             f"Date: {ticket_data.get('date')}\n"
             f"\nProceed with automation?"

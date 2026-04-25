@@ -95,9 +95,9 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             results.append(f"{icon} *{name}*: {msg}")
             worker.close()
         except Exception as e:
-            results.append(f"❌ *{name}*: Unexpected error {str(e)}")
+            results.append(f"❌ {name}: Unexpected error {str(e)}")
             
-    await update.message.reply_text("\n".join(results), parse_mode='Markdown')
+    await update.message.reply_text("\n".join(results))
 
 @restricted
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):

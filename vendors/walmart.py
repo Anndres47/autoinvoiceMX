@@ -4,7 +4,7 @@ import os
 class WalmartRecipe(BaseRecipe):
     @property
     def url(self):
-        return 'https://facturacion.walmartmexico.com.mx/frmDatos.aspx'
+        return 'https://facturacion.walmartmexico.com.mx/Default.aspx'
 
     @property
     def selectors(self):
@@ -23,58 +23,77 @@ class WalmartRecipe(BaseRecipe):
         import logging
         self.page.get(self.url)
         logging.info(f"Navigating to Walmart portal: {self.url}")
-        current_action = "Loading Walmart data form page"
+        current_action = "Loading Walmart portal page"
         
         try:
-            # Handle initial dialogues that might appear on page load
-            current_action = "Handling initial dialogues"
+            # 1. Click 'Aceptar' button to close the initial dialogue
+            current_action = "Step 1: Clicking initial 'Aceptar' button"
             logging.info(current_action)
-            self.handle_dialogues()
-            
-            # 3. Fill RFC, TC, TR, and zip code
-            current_action = "Step 3a: Filling TR (Ticket) Number"
+            btn_aceptar_inicio = self.page.ele('text:Aceptar', timeout=5)
+            if btn_aceptar_inicio:
+                btn_aceptar_inicio.click()
+            else:
+                self.handle_dialogues() # Fallback to general handle_dialogues
+
+            # 2. Click the 'Obtener Factura' link to start the invoice process
+            current_action = "Step 2: Clicking 'Obtener factura' link"
             logging.info(current_action)
-            tr_val = ticket_data.get('extra_data', {}).get('tr') or ticket_data.get('extra_data', {}).get('web_id', '')
-            if self.page.ele('#ctl00_ContentPlaceHolder1_txtTR', timeout=2):
-                self.page.ele('#ctl00_ContentPlaceHolder1_txtTR').input(tr_val)
+            btn_obtener = self.page.ele('text:Obtener factura', timeout=5)
+            if btn_obtener:
+                btn_obtener.click()
             
-            current_action = "Step 3b: Filling TC (Transaction) Number"
+            # 3. Fill RFC, CP, TR, and TC using exact Playwright placeholders
+            current_action = "Step 3a: Filling RFC"
             logging.info(current_action)
-            tc_val = ticket_data.get('extra_data', {}).get('tc') or ticket_data.get('extra_data', {}).get('web_id', '')
-            if self.page.ele('#ctl00_ContentPlaceHolder1_txtTC', timeout=2):
-                self.page.ele('#ctl00_ContentPlaceHolder1_txtTC').input(tc_val)
+            rfc_box = self.page.ele('@placeholder=Membresía o RFC', timeout=10)
+            if rfc_box:
+                rfc_box.input(self.fiscal_data['rfc'])
+            else:
+                raise Exception("Could not find RFC input box.")
             
-            current_action = "Step 3c: Filling RFC"
-            logging.info(current_action)
-            if self.page.ele('#ctl00_ContentPlaceHolder1_txtMemRFC', timeout=2):
-                self.page.ele('#ctl00_ContentPlaceHolder1_txtMemRFC').input(self.fiscal_data['rfc'])
-            
-            # Zip Code (CP) - Always use the user's personal ZIP from .env for CFDI 4.0
-            current_action = "Step 3d: Filling Zip Code (CP)"
+            current_action = "Step 3b: Filling Zip Code (CP)"
             logging.info(current_action)
             personal_zip = self.fiscal_data.get('zip', '')
-            if self.page.ele('#ctl00_ContentPlaceHolder1_txtCP', timeout=2):
-                self.page.ele('#ctl00_ContentPlaceHolder1_txtCP').input(personal_zip)
+            cp_box = self.page.ele('@placeholder=Código postal', timeout=5)
+            if cp_box:
+                cp_box.input(personal_zip)
+            
+            current_action = "Step 3c: Filling TR (Ticket) Number"
+            logging.info(current_action)
+            tr_val = ticket_data.get('extra_data', {}).get('tr') or ticket_data.get('extra_data', {}).get('transaction_number', '')
+            tr_box = self.page.ele('@placeholder=Número de ticket', timeout=5)
+            if tr_box:
+                tr_box.input(tr_val)
+            else:
+                raise Exception("Could not find TR input box.")
+            
+            current_action = "Step 3d: Filling TC (Transaction) Number"
+            logging.info(current_action)
+            tc_val = ticket_data.get('extra_data', {}).get('tc') or ticket_data.get('extra_data', {}).get('web_id', '')
+            tc_box = self.page.ele('@placeholder=# Transacción', timeout=5)
+            if tc_box:
+                tc_box.input(tc_val)
+            else:
+                raise Exception("Could not find TC input box.")
             
             # 4. Click 'Continuar' button
             current_action = "Step 4: Clicking 'Continuar' button"
             logging.info(current_action)
-            btn_continue = self.page.ele('#ctl00_ContentPlaceHolder1_btnAceptar', timeout=5) or self.page.ele('text:Continuar', timeout=5)
+            btn_continue = self.page.ele('text:Continuar', timeout=5)
             if btn_continue:
-                btn_continue.click(by_js=True)
+                btn_continue.click()
             
             # VERIFY Step 4 worked by waiting for a Step 5 element
             if not self.page.ele('#ctl00_ContentPlaceHolder1_txtRazon', timeout=10):
                 raise Exception("Failed to reach Step 5: Razon Social field not found. Likely validation error on Step 3.")
             
-            # 5. Handle Selects ('Regimen' and 'CFDI') and 'Razon Social'
+            # 5. Handle Selects ('Regimen' and 'CFDI'), 'Razon Social', and 'CP'
             current_action = "Step 5a: Handling dialogues after Continuar"
             logging.info(current_action)
             self.handle_dialogues()
             import constants
             
-            # Fill Razon Social if it appears
-            current_action = "Step 5b: Corroborating Razon Social"
+            current_action = "Step 5b: Checking and Filling Razon Social"
             logging.info(current_action)
             razon_field = self.page.ele('#ctl00_ContentPlaceHolder1_txtRazon', timeout=5)
             if razon_field:
@@ -87,83 +106,99 @@ class WalmartRecipe(BaseRecipe):
                 else:
                     logging.info("Razon Social is already correctly pre-filled.")
 
-            # Select Régimen Fiscal (e.g. 612)
-            current_action = "Step 5c: Selecting Regimen Fiscal"
+            current_action = "Step 5c: Checking and Filling Zip Code (txtCP)"
             logging.info(current_action)
-            if self.page.ele('#ctl00_ContentPlaceHolder1_ddlregimenFiscal', timeout=2):
-                self.select_sat_option('#ctl00_ContentPlaceHolder1_ddlregimenFiscal', self.fiscal_data['regimen'], constants.REGIMEN_FISCAL)
+            cp_field2 = self.page.ele('#ctl00_ContentPlaceHolder1_txtCP', timeout=2)
+            if cp_field2:
+                if cp_field2.value != personal_zip:
+                    cp_field2.clear()
+                    cp_field2.input(personal_zip)
+
+            current_action = "Step 5d: Selecting Regimen Fiscal"
+            logging.info(current_action)
+            regimen_field = self.page.ele('#ctl00_ContentPlaceHolder1_ddlregimenFiscal', timeout=2)
+            if regimen_field:
+                if regimen_field.value in [None, "", "0"]:
+                    logging.info("Selecting Regimen Fiscal from env")
+                    self.select_sat_option('#ctl00_ContentPlaceHolder1_ddlregimenFiscal', self.fiscal_data['regimen'], constants.REGIMEN_FISCAL)
+                else:
+                    logging.info("Regimen Fiscal is pre-filled, skipping.")
             
-            # Select Uso CFDI (e.g. G03)
-            current_action = "Step 5d: Selecting Uso CFDI"
+            current_action = "Step 5e: Selecting Uso CFDI"
             logging.info(current_action)
-            if self.page.ele('#ctl00_ContentPlaceHolder1_ddlusoCFDI', timeout=2):
-                self.select_sat_option('#ctl00_ContentPlaceHolder1_ddlusoCFDI', self.fiscal_data['uso_cfdi'], constants.USO_CFDI)
+            uso_field = self.page.ele('#ctl00_ContentPlaceHolder1_ddlusoCFDI', timeout=2)
+            if uso_field:
+                if uso_field.value in [None, "", "0"]:
+                    logging.info("Selecting Uso CFDI from env")
+                    self.select_sat_option('#ctl00_ContentPlaceHolder1_ddlusoCFDI', self.fiscal_data['uso_cfdi'], constants.USO_CFDI)
+                else:
+                    logging.info("Uso CFDI is pre-filled, skipping.")
                 
             # 6. Click 'Aceptar' button
             current_action = "Step 6: Clicking 'Aceptar' to confirm fiscal data"
             logging.info(current_action)
-            btn_aceptar = self.page.ele('#ctl00_ContentPlaceHolder1_btnAceptar', timeout=5) or self.page.ele('text:Aceptar', timeout=5)
+            btn_aceptar = self.page.ele('text:Aceptar', timeout=5)
             if btn_aceptar:
-                btn_aceptar.click(by_js=True)
+                btn_aceptar.click()
 
-            # 6.5 Handle dialogue to confirm if data is correct ('Aceptar' again)
-            current_action = "Step 6.5: Handling confirm data dialogue (Aceptar)"
+            # 7. Handle dialogue to confirm if data is correct ('Continuar' according to Playwright trace)
+            current_action = "Step 7: Clicking 'Continuar' on confirm data dialogue"
             logging.info(current_action)
-            self.handle_dialogues()
+            btn_continue_data = self.page.ele('text:Continuar', timeout=5)
+            if btn_continue_data:
+                btn_continue_data.click()
+            else:
+                self.handle_dialogues() # Fallback
             
-            # VERIFY Step 6 worked by waiting for Step 7 element
+            # VERIFY Step 7 worked by waiting for Step 8 element
             if not self.page.ele('#ctl00_ContentPlaceHolder1_ddlPaymentType', timeout=10):
-                raise Exception("Failed to reach Step 7: Payment Type dropdown not found after confirmation.")
+                raise Exception("Failed to reach Payment step: Payment Type dropdown not found after confirmation.")
 
-            # 7. Select Forma de Pago (Payment Method)
-            current_action = "Step 7: Selecting Forma de Pago"
+            # 8. Select Forma de Pago (Payment Method)
+            current_action = "Step 8: Selecting Forma de Pago"
             logging.info(current_action)
             payment_code = self.fiscal_data['forma_pago'] or ticket_data.get('extra_data', {}).get('payment_method', '01')
             if self.page.ele('#ctl00_ContentPlaceHolder1_ddlPaymentType', timeout=2):
                 self.select_sat_option('#ctl00_ContentPlaceHolder1_ddlPaymentType', payment_code, constants.FORMA_PAGO)
 
-            # 8. Click 'Continuar' button
-            current_action = "Step 8: Clicking second 'Continuar' button"
+            # 9. Click 'Continuar' button
+            current_action = "Step 9: Clicking 'Continuar' after payment method"
             logging.info(current_action)
-            btn_continue_3 = self.page.ele('#ctl00_ContentPlaceHolder1_btnAceptar', timeout=5) or self.page.ele('text:Continuar', timeout=5)
-            if btn_continue_3:
-                btn_continue_3.click(by_js=True)
+            btn_continue_payment = self.page.ele('text:Continuar', timeout=5)
+            if btn_continue_payment:
+                btn_continue_payment.click()
 
-            # 9. Email confirmation toggle and email box
-            current_action = "Step 9a: Handling dialogues before email"
+            # 10. Email confirmation toggle and email box
+            current_action = "Step 10a: Handling dialogues before email"
             logging.info(current_action)
             self.handle_dialogues()
             
-            # VERIFY Step 8 worked by checking for email box
-            if not self.page.ele('#ctl00_ContentPlaceHolder1_txtEmail', timeout=10):
-                 logging.warning("Step 9 email field not found immediately, trying to proceed anyway...")
-            
-            current_action = "Step 9b: Toggling 'Enviar a correo electronico'"
+            current_action = "Step 10b: Toggling 'Enviar a correo electronico'"
             logging.info(current_action)
-            email_toggle = self.page.ele('@for=ctl00_ContentPlaceHolder1_rdCorreo', timeout=2) or self.page.ele('#ctl00_ContentPlaceHolder1_rdCorreo', timeout=2)
+            email_toggle = self.page.ele('text:Enviar a correo electrónico', timeout=5) or self.page.ele('@for=ctl00_ContentPlaceHolder1_rdCorreo', timeout=2)
             if email_toggle:
-                email_toggle.click(by_js=True)
+                email_toggle.click()
             
-            current_action = "Step 9c: Verifying/Filling Email Address"
+            current_action = "Step 10c: Verifying/Filling Email Address"
             logging.info(current_action)
-            email_field = self.page.ele('#ctl00_ContentPlaceHolder1_txtEmail', timeout=2)
+            email_field = self.page.ele('@placeholder=Correo electrónico', timeout=5) or self.page.ele('#ctl00_ContentPlaceHolder1_txtEmail', timeout=2)
             if email_field:
                 if email_field.value != self.default_email:
                     email_field.clear()
                     email_field.input(self.default_email)
             
-            # 10. Click 'Facturar' button
-            current_action = "Step 10: Clicking final 'Facturar' button"
+            # 11. Click 'Facturar' button
+            current_action = "Step 11: Clicking final 'Facturar' button"
             logging.info(current_action)
-            btn_facturar = self.page.ele('#ctl00_ContentPlaceHolder1_btnFacturar', timeout=5) or self.page.ele('text:Facturar', timeout=5)
+            btn_facturar = self.page.ele('text:Facturar', timeout=5)
             if btn_facturar:
-                btn_facturar.click(by_js=True)
+                btn_facturar.click()
             
-            # 11. Verify specific Walmart success message
-            current_action = "Step 11: Waiting for 'FACTURA ENVIADA' success message"
+            # 12. Verify specific Walmart success message
+            current_action = "Step 12: Waiting for 'FACTURA ENVIADA' success message"
             logging.info(current_action)
             self.handle_dialogues()
-            if self.page.ele('text:FACTURA ENVIADA', timeout=15):
+            if self.page.ele('text:FACTURA ENVIADA', timeout=15) or self.page.ele('text:enviada', timeout=15):
                 logging.info("SUCCESS: Walmart invoice sent.")
                 return "SUCCESS_EMAIL"
             else:

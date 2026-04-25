@@ -14,6 +14,7 @@ class BaseRecipe(abc.ABC):
         self.options.set_argument('--no-sandbox')
         self.options.set_argument('--disable-gpu')
         self.options.set_argument('--disable-dev-shm-usage')
+        self.options.set_argument('--window-size=1920,1080')
 
         # Resource Optimization: Block images and CSS
         self.options.set_pref('profile.managed_default_content_settings.images', 2)
@@ -110,8 +111,10 @@ class BaseRecipe(abc.ABC):
             print(f"Failed to trigger email: {e}")
             return False
 
-    def handle_dialogues(self):
+    def handle_dialogues(self, wait_time=2):
         """Checks for common pop-ups, alerts or dialogues and closes them."""
+        import time
+        time.sleep(wait_time) # Short wait for JS modals to trigger
         try:
             # Handle JS alerts
             if self.page.handle_alert(accept=True):
@@ -122,8 +125,11 @@ class BaseRecipe(abc.ABC):
             for selector in close_selectors:
                 btn = self.page.ele(selector, timeout=1)
                 if btn:
-                    btn.click()
-                    print(f"Closed dialogue using: {selector}")
+                    try:
+                        btn.click(by_js=True) # Use JS click in case it's covered by a backdrop
+                        print(f"Closed dialogue using: {selector}")
+                    except:
+                        pass
         except:
             pass
 

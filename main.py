@@ -97,7 +97,9 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             results.append(f"❌ {name}: Unexpected error {str(e)}")
             
-    await update.message.reply_text("\n".join(results))
+    final_message = "\n".join(results)
+    logging.info(f"Health Check Results:\n{final_message}")
+    await update.message.reply_text(final_message)
 
 @restricted
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):

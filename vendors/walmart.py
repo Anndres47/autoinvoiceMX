@@ -9,7 +9,7 @@ class WalmartRecipe(BaseRecipe):
     @property
     def selectors(self):
         return {
-            "tr_input": "#ctl00_ContentPlaceHolder1_txtTR"
+            "obtener_btn": "text:Obtener factura"
         }
 
     ocr_hints = (

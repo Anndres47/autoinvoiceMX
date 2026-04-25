@@ -60,7 +60,7 @@ class WalmartRecipe(BaseRecipe):
             
             current_action = "Step 3c: Filling TR (Ticket) Number"
             logging.info(current_action)
-            tr_val = ticket_data.get('extra_data', {}).get('tr') or ticket_data.get('extra_data', {}).get('transaction_number', '')
+            tr_val = ticket_data.get('extra_data', {}).get('tr') or ticket_data.get('extra_data', {}).get('web_id', '')
             tr_box = self.page.ele('@placeholder=Número de ticket', timeout=5)
             if tr_box:
                 tr_box.input(tr_val)
@@ -69,7 +69,7 @@ class WalmartRecipe(BaseRecipe):
             
             current_action = "Step 3d: Filling TC (Transaction) Number"
             logging.info(current_action)
-            tc_val = ticket_data.get('extra_data', {}).get('tc') or ticket_data.get('extra_data', {}).get('web_id', '')
+            tc_val = ticket_data.get('extra_data', {}).get('tc') or ticket_data.get('extra_data', {}).get('transaction_number', '')
             tc_box = self.page.ele('@placeholder=# Transacción', timeout=5)
             if tc_box:
                 tc_box.input(tc_val)

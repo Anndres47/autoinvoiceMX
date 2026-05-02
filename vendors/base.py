@@ -2,10 +2,26 @@ from DrissionPage import ChromiumPage, ChromiumOptions
 import os
 import abc
 import constants
+import unicodedata
+
+SUCCESS_EMAIL = "SUCCESS_EMAIL"
+EMAIL_TRIGGERED_BUT_NO_CONFIRMATION = "EMAIL_TRIGGERED_BUT_NO_CONFIRMATION"
+READY_TO_SUBMIT = "READY_TO_SUBMIT"
+CANCELLED_BY_USER = "CANCELLED_BY_USER"
+FAILED_EMAIL_TRIGGER = "FAILED_EMAIL_TRIGGER"
+
+FISCAL_REPLACE_ENV = "replace_env"
+FISCAL_KEEP_PORTAL = "keep_portal"
+FISCAL_CANCEL = "cancel"
 
 class BaseRecipe(abc.ABC):
-    def __init__(self, headless=True):
+    def __init__(self, headless=True, mode="live", fiscal_mismatch_resolver=None):
+        self.mode = mode
+        self.fiscal_mismatch_resolver = fiscal_mismatch_resolver
         self.options = ChromiumOptions()
+        browser_path = os.getenv("BROWSER_PATH")
+        if browser_path:
+            self.options.set_browser_path(browser_path)
         if headless:
             self.options.headless()
             self.options.set_argument('--headless=new')
@@ -52,14 +68,102 @@ class BaseRecipe(abc.ABC):
 
             # Fuzzy match by description if full text fails
             if description:
+                normalized_description = self._normalize_text(description)
                 for option in dropdown.select.options:
-                    if description in option.text:
+                    normalized_option = self._normalize_text(option.text)
+                    if normalized_description in normalized_option:
                         option.click()
                         return True
             return False
         except Exception as e:
             print(f"Failed to select SAT option {code}: {e}")
             return False
+
+    @staticmethod
+    def _normalize_text(value):
+        """Normalizes accents/case for resilient SAT dropdown matching."""
+        text = unicodedata.normalize("NFKD", str(value))
+        return "".join(ch for ch in text if not unicodedata.combining(ch)).casefold()
+
+    @staticmethod
+    def _field_value(field):
+        """Returns a stable value from a DrissionPage element."""
+        if not field:
+            return ""
+        value = getattr(field, "value", None)
+        if value is None:
+            value = getattr(field, "text", "")
+        return str(value or "").strip()
+
+    def _values_match(self, portal_value, expected_value):
+        if not portal_value or not expected_value:
+            return True
+        return self._normalize_text(portal_value) == self._normalize_text(expected_value)
+
+    def _expected_fiscal_values(self, key):
+        expected = str(self.fiscal_data.get(key) or "").strip()
+        values = [expected] if expected else []
+        if key == "regimen" and expected in constants.REGIMEN_FISCAL:
+            values.append(constants.REGIMEN_FISCAL[expected])
+        if key == "uso_cfdi" and expected in constants.USO_CFDI:
+            values.append(constants.USO_CFDI[expected])
+        return values
+
+    def build_fiscal_mismatches(self, portal_values):
+        """
+        Compares portal-saved fiscal data against .env fiscal data.
+        Missing portal or env values are ignored because they do not prove a mismatch.
+        """
+        labels = {
+            "rfc": "RFC",
+            "razon_social": "Razon Social",
+            "zip": "Postal Code",
+            "regimen": "Regimen Fiscal",
+            "uso_cfdi": "Uso CFDI",
+        }
+        mismatches = []
+        for key, label in labels.items():
+            portal_value = str(portal_values.get(key) or "").strip()
+            expected_values = self._expected_fiscal_values(key)
+            if portal_value and expected_values and not any(self._values_match(portal_value, expected) for expected in expected_values):
+                mismatches.append({
+                    "field": key,
+                    "label": label,
+                    "portal": portal_value,
+                    "env": expected_values[0],
+                })
+        return mismatches
+
+    def resolve_fiscal_mismatches(self, vendor, mismatches):
+        """
+        Asks the host app how to handle mismatched saved fiscal data.
+        Defaults to keeping the portal values when no resolver is configured or it times out.
+        """
+        if not mismatches:
+            return FISCAL_REPLACE_ENV
+        if not self.fiscal_mismatch_resolver:
+            print(f"Fiscal mismatch detected for {vendor}; keeping portal values by default.")
+            return FISCAL_KEEP_PORTAL
+        try:
+            choice = self.fiscal_mismatch_resolver(vendor, mismatches)
+            return choice or FISCAL_KEEP_PORTAL
+        except Exception as e:
+            print(f"Fiscal mismatch resolver failed: {e}. Keeping portal values.")
+            return FISCAL_KEEP_PORTAL
+
+    def maybe_stop_before_submit(self, name):
+        """Stops dry-run mode before the irreversible portal submit action."""
+        if self.mode == "dry-run":
+            screenshot_path = self.save_debug_screenshot(f"{name}_ready_to_submit")
+            return f"{READY_TO_SUBMIT} (Screenshot saved: {screenshot_path})"
+        return None
+
+    def explore(self):
+        """Explore-only mode: open portal, handle initial dialogs, and capture evidence."""
+        self.page.get(self.url)
+        self.handle_dialogues()
+        screenshot_path = self.save_debug_screenshot(f"{self.__class__.__name__.lower()}_explore")
+        return f"EXPLORE_READY (Screenshot saved: {screenshot_path})"
 
     @abc.abstractproperty
     def url(self):

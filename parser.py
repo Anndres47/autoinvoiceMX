@@ -12,11 +12,12 @@ client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 from vendors.oxxo import OxxoRecipe
 from vendors.walmart import WalmartRecipe
+from vendors.costco import CostcoRecipe
 
 def get_vendor_knowledge():
     """Aggregates hints from all supported vendors."""
     hints = []
-    recipes = [OxxoRecipe, WalmartRecipe]
+    recipes = [OxxoRecipe, WalmartRecipe, CostcoRecipe]
     for r in recipes:
         if r.ocr_hints:
             hints.append(r.ocr_hints)
@@ -24,7 +25,7 @@ def get_vendor_knowledge():
 
 def parse_ticket(image_path, vendor=None):
     """
-    Parses a ticket image using Gemini 1.5 Flash in JSON mode with vendor-specific knowledge.
+    Parses a ticket image using Gemini 2.5 Flash in JSON mode with vendor-specific knowledge.
     """
     logging.info(f"🔍 Sending ticket image to Gemini (Target Vendor: {vendor})")
     
@@ -54,6 +55,7 @@ def parse_ticket(image_path, vendor=None):
             "tr": "string or null",
             "tc": "string or null",
             "store_id": "string or null",
+            "ticket_order": "string or null",
             "payment_method": "string (e.g., Efectivo, Tarjeta, 28, 04) or null"
         }}
     }}
@@ -64,6 +66,7 @@ def parse_ticket(image_path, vendor=None):
     GENERAL INSTRUCTIONS:
     - Look for 'Folio', 'Web ID', 'No. Transacción', 'Ticket ID'.
     - For Walmart: put TR into 'tr' and TC into 'tc'.
+    - For Costco: put Ticket / Orden into extra_data.ticket_order and also into folio if no separate folio is present.
     - If you see multiple dates, the 'date' should be the purchase date.
     - Total must be a number only.
     - If information is missing, use null.

@@ -1,5 +1,7 @@
 import os
 import logging
+import queue
+import uuid
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
@@ -13,7 +15,8 @@ from telegram.ext import (
 from dotenv import load_dotenv
 import parser
 import database
-from vendors.base import BaseRecipe
+from vendors.adapters import VendorInputError, adapt_ticket_data
+from vendors.base import CANCELLED_BY_USER, FISCAL_CANCEL, FISCAL_KEEP_PORTAL, FISCAL_REPLACE_ENV
 
 load_dotenv()
 
@@ -48,17 +51,20 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # States
-SELECTING_VENDOR, WAITING_FOR_PHOTO, VALIDATING, AUTOMATING, CHALLENGE = range(5)
+SELECTING_VENDOR, WAITING_FOR_PHOTO, VALIDATING = range(3)
 
-SUPPORTED_VENDORS = ["OXXO", "Walmart"]
+SUPPORTED_VENDORS = ["OXXO", "Walmart", "Costco"]
+PENDING_FISCAL_MISMATCHES = {}
 
 from vendors.oxxo import OxxoRecipe
 from vendors.walmart import WalmartRecipe
+from vendors.costco import CostcoRecipe
 
 # Map the vendor name to the class
 RECIPES = {
     "OXXO": OxxoRecipe,
-    "Walmart": WalmartRecipe
+    "Walmart": WalmartRecipe,
+    "Costco": CostcoRecipe,
 }
 
 @restricted
@@ -89,7 +95,7 @@ async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     results = []
     for name, recipe_class in RECIPES.items():
         try:
-            worker = recipe_class(headless=True)
+            worker = recipe_class(headless=True, mode="live")
             is_healthy, msg = worker.check_health()
             icon = "✅" if is_healthy else "❌"
             results.append(f"{icon} *{name}*: {msg}")
@@ -143,6 +149,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return WAITING_FOR_PHOTO
     
     ticket_data['vendor'] = selected_vendor
+    try:
+        ticket_data = adapt_ticket_data(selected_vendor, ticket_data)
+    except VendorInputError as e:
+        logging.error(f"Vendor adapter rejected Gemini output: {e}")
+        await update.message.reply_text(f"Missing required ticket data for {selected_vendor}: {e}. Please try a clearer photo.")
+        return WAITING_FOR_PHOTO
     
     context.user_data['ticket_data'] = ticket_data
     context.user_data['photo_path'] = photo_path
@@ -178,6 +190,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Date: {ticket_data.get('date')}\n"
             f"\nProceed with automation?"
         )
+    elif selected_vendor == "Costco":
+        ticket_order = ticket_data.get('extra_data', {}).get('ticket_order') or ticket_data.get('folio', '')
+        msg = (
+            f"Confirm details for *{selected_vendor}*:\n"
+            f"Ticket / Orden: {ticket_order}\n"
+            f"Total pagado: ${ticket_data.get('total')}\n"
+            f"\nProceed with automation?"
+        )
     else:
         extra_msg = ""
         if ticket_data.get('extra_data'):
@@ -197,7 +217,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
             InlineKeyboardButton("YES", callback_data='yes'),
-            InlineKeyboardButton("EDIT", callback_data='edit'),
             InlineKeyboardButton("CANCEL", callback_data='cancel'),
         ]
     ]
@@ -225,9 +244,64 @@ import asyncio
 async def run_automation_worker(recipe_class, ticket_data, chat_id, ticket_id, context):
     """Asynchronous worker to run the browser automation."""
     try:
+        loop = asyncio.get_running_loop()
+
+        def _resolve_fiscal_mismatch(vendor, mismatches):
+            request_id = uuid.uuid4().hex
+            answer_queue = queue.Queue(maxsize=1)
+            timeout_seconds = int(os.getenv("FISCAL_MISMATCH_TIMEOUT_SECONDS", "300"))
+            PENDING_FISCAL_MISMATCHES[request_id] = {
+                "queue": answer_queue,
+                "vendor": vendor,
+                "chat_id": chat_id,
+            }
+
+            lines = [
+                f"{vendor} has saved fiscal data that differs from .env.",
+                "Choose how to continue:",
+                "",
+            ]
+            for item in mismatches:
+                lines.append(f"{item['label']}:")
+                lines.append(f"Portal: {item['portal']}")
+                lines.append(f".env: {item['env']}")
+                lines.append("")
+
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("REPLACE WITH ENV", callback_data=f"fiscal_mismatch:{request_id}:{FISCAL_REPLACE_ENV}"),
+                    InlineKeyboardButton("LEAVE AS PORTAL", callback_data=f"fiscal_mismatch:{request_id}:{FISCAL_KEEP_PORTAL}"),
+                ],
+                [
+                    InlineKeyboardButton("CANCEL", callback_data=f"fiscal_mismatch:{request_id}:{FISCAL_CANCEL}"),
+                ],
+            ])
+            send_future = asyncio.run_coroutine_threadsafe(
+                context.bot.send_message(chat_id=chat_id, text="\n".join(lines), reply_markup=keyboard),
+                loop,
+            )
+            send_future.result(timeout=15)
+
+            try:
+                choice = answer_queue.get(timeout=timeout_seconds)
+                logging.info(f"User selected fiscal mismatch action for {vendor}: {choice}")
+                return choice
+            except queue.Empty:
+                logging.warning(f"Fiscal mismatch prompt timed out for {vendor}; keeping portal values.")
+                asyncio.run_coroutine_threadsafe(
+                    context.bot.send_message(
+                        chat_id=chat_id,
+                        text=f"No fiscal mismatch response received for {vendor}; continuing with portal-saved values.",
+                    ),
+                    loop,
+                )
+                return FISCAL_KEEP_PORTAL
+            finally:
+                PENDING_FISCAL_MISMATCHES.pop(request_id, None)
+
         # Run the blocking DrissionPage code in a separate thread to keep bot responsive
         def _run():
-            worker = recipe_class(headless=True)
+            worker = recipe_class(headless=True, mode="live", fiscal_mismatch_resolver=_resolve_fiscal_mismatch)
             try:
                 return worker.run(ticket_data)
             finally:
@@ -235,10 +309,16 @@ async def run_automation_worker(recipe_class, ticket_data, chat_id, ticket_id, c
 
         result = await asyncio.to_thread(_run)
         
-        status = 'COMPLETED' if "SUCCESS" in result else 'FAILED'
+        if result == CANCELLED_BY_USER:
+            status = 'CANCELLED'
+        else:
+            status = 'COMPLETED' if "SUCCESS" in result else 'FAILED'
         database.update_ticket_status(ticket_id, status)
         
-        if status == 'FAILED':
+        if status == 'CANCELLED':
+            logging.info(f"Automation Worker Cancelled:\n{result}")
+            await context.bot.send_message(chat_id=chat_id, text="Automation cancelled before invoicing.")
+        elif status == 'FAILED':
             logging.error(f"Automation Worker Failed:\n{result}")
             
             # Extract just the screenshot path for the user if it exists
@@ -283,8 +363,39 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Operation cancelled.")
         return SELECTING_VENDOR
     else:
-        await query.edit_message_text("Edit mode not implemented yet. Please resend photo or cancel.")
+        await query.edit_message_text("Unknown action. Please resend the photo or cancel.")
         return VALIDATING
+
+async def fiscal_mismatch_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        _, request_id, choice = query.data.split(":", 2)
+    except ValueError:
+        await query.edit_message_text("Invalid fiscal mismatch action.")
+        return
+
+    pending = PENDING_FISCAL_MISMATCHES.get(request_id)
+    if not pending:
+        await query.edit_message_text("This fiscal mismatch prompt is no longer active.")
+        return
+    if choice not in {FISCAL_REPLACE_ENV, FISCAL_KEEP_PORTAL, FISCAL_CANCEL}:
+        await query.edit_message_text("Invalid fiscal mismatch choice.")
+        return
+
+    if pending["chat_id"] != update.effective_chat.id:
+        logging.warning(f"Ignoring fiscal mismatch response from unexpected chat {update.effective_chat.id}")
+        await query.edit_message_text("This fiscal mismatch prompt belongs to another chat.")
+        return
+
+    pending["queue"].put_nowait(choice)
+    labels = {
+        FISCAL_REPLACE_ENV: "replace portal values with .env",
+        FISCAL_KEEP_PORTAL: "keep portal-saved values",
+        FISCAL_CANCEL: "cancel automation",
+    }
+    await query.edit_message_text(f"Fiscal mismatch decision: {labels.get(choice, choice)}.")
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Operation cancelled.")
@@ -362,13 +473,12 @@ if __name__ == '__main__':
                 CommandHandler('history', history),
                 CommandHandler('status', status)
             ],
-            VALIDATING: [CallbackQueryHandler(button_handler)],
-            AUTOMATING: [],
-            CHALLENGE: []
+            VALIDATING: [CallbackQueryHandler(button_handler)]
         },
         fallbacks=[CommandHandler('cancel', cancel), CommandHandler('start', start)],
     )
     
+    app.add_handler(CallbackQueryHandler(fiscal_mismatch_handler, pattern="^fiscal_mismatch:"))
     app.add_handler(conv_handler)
     app.add_error_handler(error_handler)
     print("Bot is running...")
